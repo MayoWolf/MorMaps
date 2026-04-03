@@ -11,7 +11,6 @@ const state = {
   activeMarkerDrag: null,
   pointerMap: new Map(),
   tba: {
-    apiKey: "",
     eventKey: "2026caasv",
     teams: [],
     filteredTeams: [],
@@ -34,17 +33,15 @@ const els = {
   field: document.getElementById("field"),
   canvas: document.getElementById("drawing-layer"),
   markerLayer: document.getElementById("marker-layer"),
-  tbaApiKey: document.getElementById("tba-api-key"),
   tbaEventKey: document.getElementById("tba-event-key"),
   loadTbaTeams: document.getElementById("load-tba-teams"),
-  clearTbaKey: document.getElementById("clear-tba-key"),
+  refreshTbaTeams: document.getElementById("refresh-tba-teams"),
   tbaTeamSearch: document.getElementById("tba-team-search"),
   tbaStatus: document.getElementById("tba-status"),
   tbaTeamList: document.getElementById("tba-team-list"),
   tbaTeamCount: document.getElementById("tba-team-count"),
   tbaMatchList: document.getElementById("tba-match-list"),
   tbaMatchCount: document.getElementById("tba-match-count"),
-  addMarker: document.getElementById("add-marker"),
   removeMarker: document.getElementById("remove-marker"),
   clearDrawing: document.getElementById("clear-drawing"),
   resetBoard: document.getElementById("reset-board"),
@@ -55,10 +52,6 @@ const els = {
   strokeColor: document.getElementById("stroke-color"),
   randomizeStroke: document.getElementById("randomize-stroke"),
   strokeWidth: document.getElementById("stroke-width"),
-  teamNumber: document.getElementById("team-number"),
-  teamLabel: document.getElementById("team-label"),
-  teamColor: document.getElementById("team-color"),
-  teamLogo: document.getElementById("team-logo"),
   addStep: document.getElementById("add-step"),
   playSequence: document.getElementById("play-sequence"),
   pauseSequence: document.getElementById("pause-sequence"),
@@ -71,7 +64,6 @@ const els = {
 };
 
 const ctx = els.canvas.getContext("2d");
-const TBA_STORAGE_KEY = "mormaps.tba.apiKey";
 const TBA_EVENT_STORAGE_KEY = "mormaps.tba.eventKey";
 const ALLIANCE_OUTLINES = {
   red: "#dc2626",
@@ -110,14 +102,11 @@ function setTbaStatus(message, isError = false) {
 }
 
 function saveTbaSettings() {
-  localStorage.setItem(TBA_STORAGE_KEY, state.tba.apiKey);
   localStorage.setItem(TBA_EVENT_STORAGE_KEY, state.tba.eventKey);
 }
 
 function readStoredTbaSettings() {
-  state.tba.apiKey = localStorage.getItem(TBA_STORAGE_KEY) || "";
   state.tba.eventKey = localStorage.getItem(TBA_EVENT_STORAGE_KEY) || "2026caasv";
-  els.tbaApiKey.value = state.tba.apiKey;
   els.tbaEventKey.value = state.tba.eventKey;
 }
 
@@ -632,60 +621,12 @@ function addTeamMarker(team) {
     number: team.number,
     label: team.nickname,
     color: team.color,
+    alliance: state.drawAlliance,
   });
 
   setTbaStatus(
     added ? `Added Team ${team.number} to the board.` : `Team ${team.number} is already on the board.`
   );
-}
-
-function getLoadedTeamByNumber(teamNumber) {
-  return state.tba.teams.find((team) => team.number === teamNumber);
-}
-
-function addMarker() {
-  const teamNumber = els.teamNumber.value.trim();
-  if (!teamNumber) {
-    els.teamNumber.focus();
-    return;
-  }
-
-  const label = els.teamLabel.value.trim();
-  const logoFile = els.teamLogo.files?.[0];
-  const loadedTeam = getLoadedTeamByNumber(teamNumber);
-  const baseConfig = {
-    number: teamNumber,
-    label: label || loadedTeam?.nickname || "",
-    color: loadedTeam?.color || els.teamColor.value,
-    alliance: loadedTeam?.alliance || state.drawAlliance,
-    logoDataUrl: "",
-  };
-
-  const commitMarker = (config) => {
-    const added = addMarkerFromConfig(config, { allowDuplicate: false });
-    if (!added) {
-      setTbaStatus(`Team ${config.number} is already on the board.`);
-      return;
-    }
-
-    els.teamNumber.value = "";
-    els.teamLabel.value = "";
-    els.teamLogo.value = "";
-  };
-
-  if (!logoFile) {
-    commitMarker(baseConfig);
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = () => {
-    commitMarker({
-      ...baseConfig,
-      logoDataUrl: reader.result,
-    });
-  };
-  reader.readAsDataURL(logoFile);
 }
 
 function buildMatchMarkers(match) {
@@ -734,18 +675,11 @@ function placeMatchOnField(match) {
 }
 
 async function loadTbaTeams() {
-  const apiKey = els.tbaApiKey.value.trim();
   const eventKey = els.tbaEventKey.value.trim().toLowerCase();
 
-  state.tba.apiKey = apiKey;
   state.tba.eventKey = eventKey || "2026caasv";
   els.tbaEventKey.value = state.tba.eventKey;
   saveTbaSettings();
-
-  if (!apiKey) {
-    setTbaStatus("Add your TBA API key first so the app can fetch teams.", true);
-    return;
-  }
 
   state.tba.isLoading = true;
   renderTbaTeams();
@@ -753,29 +687,23 @@ async function loadTbaTeams() {
   setTbaStatus(`Loading teams for ${state.tba.eventKey}...`);
 
   try {
-    const requestOptions = {
-      headers: {
-        "X-TBA-Auth-Key": apiKey,
-      },
-    };
+    const response = await fetch(
+      `/.netlify/functions/tba?eventKey=${encodeURIComponent(state.tba.eventKey)}`
+    );
 
-    const [teamsResponse, matchesResponse] = await Promise.all([
-      fetch(`https://www.thebluealliance.com/api/v3/event/${state.tba.eventKey}/teams/simple`, requestOptions),
-      fetch(`https://www.thebluealliance.com/api/v3/event/${state.tba.eventKey}/matches/simple`, requestOptions),
-    ]);
-
-    const failingResponse = !teamsResponse.ok ? teamsResponse : !matchesResponse.ok ? matchesResponse : null;
-    if (failingResponse) {
-      let message = `TBA request failed (${failingResponse.status}).`;
-      if (failingResponse.status === 401 || failingResponse.status === 403) {
-        message = "TBA rejected that API key. Double-check the key from your TBA account.";
-      } else if (failingResponse.status === 404) {
+    if (!response.ok) {
+      let message = `TBA proxy failed (${response.status}).`;
+      if (response.status === 404) {
         message = `No TBA event was found for ${state.tba.eventKey}.`;
+      } else if (response.status === 500) {
+        message = "Netlify could not reach TBA. Make sure TBA_API_KEY is set in Netlify.";
       }
       throw new Error(message);
     }
 
-    const [teams, matches] = await Promise.all([teamsResponse.json(), matchesResponse.json()]);
+    const payload = await response.json();
+    const teams = payload.teams || [];
+    const matches = payload.matches || [];
     state.tba.teams = teams
       .map(normalizeLoadedTeam)
       .sort((left, right) => Number(left.number) - Number(right.number));
@@ -811,19 +739,6 @@ async function loadTbaTeams() {
     renderTbaTeams();
     renderTbaMatches();
   }
-}
-
-function clearStoredTbaKey() {
-  state.tba.apiKey = "";
-  state.tba.teams = [];
-  state.tba.filteredTeams = [];
-  state.tba.matches = [];
-  els.tbaApiKey.value = "";
-  els.tbaTeamSearch.value = "";
-  localStorage.removeItem(TBA_STORAGE_KEY);
-  renderTbaTeams();
-  renderTbaMatches();
-  setTbaStatus("Cleared the saved TBA key from this browser.");
 }
 
 function clearDrawing() {
@@ -1023,22 +938,17 @@ function easeInOut(value) {
 function bindEvents() {
   window.addEventListener("resize", resizeCanvas);
 
-  els.tbaApiKey.addEventListener("change", (event) => {
-    state.tba.apiKey = event.target.value.trim();
-    saveTbaSettings();
-  });
   els.tbaEventKey.addEventListener("change", (event) => {
     state.tba.eventKey = event.target.value.trim().toLowerCase() || "2026caasv";
     event.target.value = state.tba.eventKey;
     saveTbaSettings();
   });
   els.loadTbaTeams.addEventListener("click", loadTbaTeams);
-  els.clearTbaKey.addEventListener("click", clearStoredTbaKey);
+  els.refreshTbaTeams.addEventListener("click", loadTbaTeams);
   els.tbaTeamSearch.addEventListener("input", (event) => {
     filterLoadedTeams(event.target.value.trim().toLowerCase());
     renderTbaTeams();
   });
-  els.addMarker.addEventListener("click", addMarker);
   els.removeMarker.addEventListener("click", removeSelectedMarker);
   els.clearDrawing.addEventListener("click", clearDrawing);
   els.resetBoard.addEventListener("click", resetBoard);
@@ -1052,17 +962,6 @@ function bindEvents() {
   els.randomizeStroke.addEventListener("click", () => {
     state.strokeColor = randomHexColor();
     els.strokeColor.value = state.strokeColor;
-  });
-  els.teamNumber.addEventListener("input", (event) => {
-    const loadedTeam = getLoadedTeamByNumber(event.target.value.trim());
-    if (!loadedTeam) {
-      return;
-    }
-
-    els.teamColor.value = loadedTeam.color;
-    if (!els.teamLabel.value.trim()) {
-      els.teamLabel.value = loadedTeam.nickname;
-    }
   });
   els.strokeWidth.addEventListener("input", (event) => {
     state.strokeWidth = event.target.value;
@@ -1104,9 +1003,7 @@ function init() {
   els.strokeColor.value = state.strokeColor;
   setDrawAlliance(state.drawAlliance);
   setStatus("Editing");
-  if (state.tba.apiKey) {
-    loadTbaTeams();
-  }
+  loadTbaTeams();
 }
 
 init();

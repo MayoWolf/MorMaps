@@ -25,18 +25,6 @@
           </div>
 
           <label>
-            TBA Read API Key
-            <input
-              id="tba-api-key"
-              type="password"
-              placeholder="Paste your X-TBA-Auth-Key"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-            />
-          </label>
-
-          <label>
             Event
             <select id="tba-event-key">
               <option value="2026calas">2026CALAS</option>
@@ -46,7 +34,7 @@
 
           <div class="tool-row">
             <button id="load-tba-teams" class="primary-button" type="button">Load Event</button>
-            <button id="clear-tba-key" class="ghost-button" type="button">Clear Key</button>
+            <button id="refresh-tba-teams" class="ghost-button" type="button">Refresh</button>
           </div>
 
           <label>
@@ -62,8 +50,8 @@
           </label>
 
           <p id="tba-status" class="subtle compact-copy">
-            Paste a TBA read key, then load one of the two event rosters and tap a match to auto-place
-            teams on the field. The key stays in this browser on this device.
+            Load one of the two events and tap a match to auto-place teams on the field. The TBA key
+            is expected from Netlify server-side config.
           </p>
 
           <div id="tba-team-list" class="team-directory" aria-live="polite"></div>
@@ -84,34 +72,16 @@
 
         <section class="panel-section">
           <div class="section-heading">
-            <h2>Team Marker</h2>
+            <h2>Board</h2>
             <div class="stacked-actions">
               <button id="remove-marker" class="ghost-button" type="button">Remove Selected</button>
               <button id="reset-board" class="ghost-button" type="button">Reset Board</button>
             </div>
           </div>
 
-          <label>
-            Team Number
-            <input id="team-number" type="text" inputmode="numeric" placeholder="254" maxlength="6" />
-          </label>
-
-          <label>
-            Role / Note
-            <input id="team-label" type="text" placeholder="Intake bot" maxlength="24" />
-          </label>
-
-          <label>
-            Marker Color
-            <input id="team-color" type="color" value="#ff6b35" />
-          </label>
-
-          <label>
-            Optional Logo
-            <input id="team-logo" type="file" accept="image/*" />
-          </label>
-
-          <button id="add-marker" class="primary-button" type="button">Add Marker</button>
+          <p class="subtle compact-copy">
+            Teams are added from the TBA roster or auto-placed from a selected match.
+          </p>
         </section>
 
         <section class="panel-section">

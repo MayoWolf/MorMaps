@@ -37,19 +37,15 @@
           </label>
 
           <label>
-            Event Key
-            <input
-              id="tba-event-key"
-              type="text"
-              value="2026caasv"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-            />
+            Event
+            <select id="tba-event-key">
+              <option value="2026calas">2026CALAS</option>
+              <option value="2026caasv" selected>2026CAASV</option>
+            </select>
           </label>
 
           <div class="tool-row">
-            <button id="load-tba-teams" class="primary-button" type="button">Load Teams</button>
+            <button id="load-tba-teams" class="primary-button" type="button">Load Event</button>
             <button id="clear-tba-key" class="ghost-button" type="button">Clear Key</button>
           </div>
 
@@ -66,11 +62,17 @@
           </label>
 
           <p id="tba-status" class="subtle compact-copy">
-            Paste a TBA read key, then load Aerospace Valley teams. The key stays in this browser on
-            this device.
+            Paste a TBA read key, then load one of the two event rosters and tap a match to auto-place
+            teams on the field. The key stays in this browser on this device.
           </p>
 
           <div id="tba-team-list" class="team-directory" aria-live="polite"></div>
+
+          <div class="section-heading mini-heading">
+            <h3>Matches</h3>
+            <span id="tba-match-count" class="value-pill">0 matches</span>
+          </div>
+          <div id="tba-match-list" class="match-directory" aria-live="polite"></div>
 
           <p class="subtle compact-copy">
             Powered by
@@ -123,10 +125,17 @@
             <button id="tool-eraser" class="tool-button" type="button">Eraser</button>
           </div>
 
+          <div class="tool-row">
+            <button id="draw-red" class="tool-button is-active" type="button">Red Outline</button>
+            <button id="draw-blue" class="tool-button" type="button">Blue Outline</button>
+          </div>
+
           <label>
-            Ink Color
+            Inner Color
             <input id="stroke-color" type="color" value="#1f2937" />
           </label>
+
+          <button id="randomize-stroke" class="ghost-button" type="button">Randomize Inner Color</button>
 
           <label>
             Stroke Width

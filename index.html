@@ -20,6 +20,68 @@
 
         <section class="panel-section">
           <div class="section-heading">
+            <h2>TBA Team Sync</h2>
+            <span id="tba-team-count" class="value-pill">0 teams</span>
+          </div>
+
+          <label>
+            TBA Read API Key
+            <input
+              id="tba-api-key"
+              type="password"
+              placeholder="Paste your X-TBA-Auth-Key"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+            />
+          </label>
+
+          <label>
+            Event Key
+            <input
+              id="tba-event-key"
+              type="text"
+              value="2026caasv"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+            />
+          </label>
+
+          <div class="tool-row">
+            <button id="load-tba-teams" class="primary-button" type="button">Load Teams</button>
+            <button id="clear-tba-key" class="ghost-button" type="button">Clear Key</button>
+          </div>
+
+          <label>
+            Search Teams
+            <input
+              id="tba-team-search"
+              type="text"
+              placeholder="Search by number or nickname"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+            />
+          </label>
+
+          <p id="tba-status" class="subtle compact-copy">
+            Paste a TBA read key, then load Aerospace Valley teams. The key stays in this browser on
+            this device.
+          </p>
+
+          <div id="tba-team-list" class="team-directory" aria-live="polite"></div>
+
+          <p class="subtle compact-copy">
+            Powered by
+            <a class="inline-link" href="https://www.thebluealliance.com/" target="_blank" rel="noreferrer">
+              The Blue Alliance
+            </a>
+          </p>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-heading">
             <h2>Team Marker</h2>
             <div class="stacked-actions">
               <button id="remove-marker" class="ghost-button" type="button">Remove Selected</button>

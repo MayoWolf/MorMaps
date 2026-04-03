@@ -9,6 +9,13 @@ const state = {
   activeStroke: null,
   activeMarkerDrag: null,
   pointerMap: new Map(),
+  tba: {
+    apiKey: "",
+    eventKey: "2026caasv",
+    teams: [],
+    filteredTeams: [],
+    isLoading: false,
+  },
   playback: {
     isPlaying: false,
     frame: 0,
@@ -25,6 +32,14 @@ const els = {
   field: document.getElementById("field"),
   canvas: document.getElementById("drawing-layer"),
   markerLayer: document.getElementById("marker-layer"),
+  tbaApiKey: document.getElementById("tba-api-key"),
+  tbaEventKey: document.getElementById("tba-event-key"),
+  loadTbaTeams: document.getElementById("load-tba-teams"),
+  clearTbaKey: document.getElementById("clear-tba-key"),
+  tbaTeamSearch: document.getElementById("tba-team-search"),
+  tbaStatus: document.getElementById("tba-status"),
+  tbaTeamList: document.getElementById("tba-team-list"),
+  tbaTeamCount: document.getElementById("tba-team-count"),
   addMarker: document.getElementById("add-marker"),
   removeMarker: document.getElementById("remove-marker"),
   clearDrawing: document.getElementById("clear-drawing"),
@@ -49,9 +64,128 @@ const els = {
 };
 
 const ctx = els.canvas.getContext("2d");
+const TBA_STORAGE_KEY = "mormaps.tba.apiKey";
+const TBA_EVENT_STORAGE_KEY = "mormaps.tba.eventKey";
 
 function uid(prefix) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function setTbaStatus(message, isError = false) {
+  els.tbaStatus.textContent = message;
+  els.tbaStatus.style.color = isError ? "#b91c1c" : "";
+}
+
+function saveTbaSettings() {
+  localStorage.setItem(TBA_STORAGE_KEY, state.tba.apiKey);
+  localStorage.setItem(TBA_EVENT_STORAGE_KEY, state.tba.eventKey);
+}
+
+function readStoredTbaSettings() {
+  state.tba.apiKey = localStorage.getItem(TBA_STORAGE_KEY) || "";
+  state.tba.eventKey = localStorage.getItem(TBA_EVENT_STORAGE_KEY) || "2026caasv";
+  els.tbaApiKey.value = state.tba.apiKey;
+  els.tbaEventKey.value = state.tba.eventKey;
+}
+
+function assignTeamColor(teamNumber) {
+  const palette = [
+    "#ef4444",
+    "#f97316",
+    "#f59e0b",
+    "#eab308",
+    "#84cc16",
+    "#22c55e",
+    "#14b8a6",
+    "#06b6d4",
+    "#0ea5e9",
+    "#3b82f6",
+    "#6366f1",
+    "#8b5cf6",
+    "#a855f7",
+    "#d946ef",
+    "#ec4899",
+    "#f43f5e",
+  ];
+  return palette[Number(teamNumber) % palette.length];
+}
+
+function normalizeLoadedTeam(team) {
+  return {
+    key: team.key,
+    number: String(team.team_number),
+    nickname: team.nickname || team.name || `Team ${team.team_number}`,
+    location: [team.city, team.state_prov].filter(Boolean).join(", "),
+    color: assignTeamColor(team.team_number),
+  };
+}
+
+function filterLoadedTeams(query = els.tbaTeamSearch.value.trim().toLowerCase()) {
+  if (!query) {
+    state.tba.filteredTeams = [...state.tba.teams];
+    return;
+  }
+
+  state.tba.filteredTeams = state.tba.teams.filter((team) => {
+    return team.number.includes(query) || team.nickname.toLowerCase().includes(query);
+  });
+}
+
+function renderTbaTeams() {
+  els.tbaTeamCount.textContent = `${state.tba.teams.length} teams`;
+  els.tbaTeamList.innerHTML = "";
+
+  if (state.tba.isLoading) {
+    const loading = document.createElement("div");
+    loading.className = "team-directory-loading";
+    loading.textContent = "Loading teams from The Blue Alliance...";
+    els.tbaTeamList.appendChild(loading);
+    return;
+  }
+
+  if (!state.tba.filteredTeams.length) {
+    const empty = document.createElement("div");
+    empty.className = "team-directory-empty";
+    empty.textContent = state.tba.teams.length
+      ? "No teams match that search."
+      : "No teams loaded yet.";
+    els.tbaTeamList.appendChild(empty);
+    return;
+  }
+
+  state.tba.filteredTeams.forEach((team) => {
+    const item = document.createElement("div");
+    item.className = "team-directory-item";
+
+    const swatch = document.createElement("span");
+    swatch.className = "team-swatch";
+    swatch.style.background = team.color;
+
+    const copy = document.createElement("div");
+    copy.className = "team-directory-copy";
+
+    const title = document.createElement("strong");
+    title.className = "team-directory-title";
+    title.textContent = `${team.number} • ${team.nickname}`;
+
+    const meta = document.createElement("span");
+    meta.className = "team-directory-meta";
+    meta.textContent = team.location || "Location unavailable";
+
+    copy.appendChild(title);
+    copy.appendChild(meta);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost-button team-directory-action";
+    button.textContent = "Add";
+    button.addEventListener("click", () => addTeamMarker(team));
+
+    item.appendChild(swatch);
+    item.appendChild(copy);
+    item.appendChild(button);
+    els.tbaTeamList.appendChild(item);
+  });
 }
 
 function cloneBoard(board = { markers: state.markers, strokes: state.strokes }) {
@@ -298,6 +432,46 @@ function removeSelectedMarker() {
   renderMarkers(state.markers);
 }
 
+function addMarkerFromConfig(config, options = {}) {
+  const existingMarker = state.markers.find((marker) => marker.number === config.number);
+  if (existingMarker && !options.allowDuplicate) {
+    state.selectedMarkerId = existingMarker.id;
+    renderMarkers(state.markers);
+    return false;
+  }
+
+  const marker = {
+    id: uid("marker"),
+    number: config.number,
+    label: config.label || "",
+    color: config.color,
+    x: 0.5 + (Math.random() * 0.16 - 0.08),
+    y: 0.5 + (Math.random() * 0.16 - 0.08),
+    logoDataUrl: config.logoDataUrl || "",
+  };
+
+  state.markers.push(marker);
+  state.selectedMarkerId = marker.id;
+  renderMarkers(state.markers);
+  return true;
+}
+
+function addTeamMarker(team) {
+  const added = addMarkerFromConfig({
+    number: team.number,
+    label: team.nickname,
+    color: team.color,
+  });
+
+  setTbaStatus(
+    added ? `Added Team ${team.number} to the board.` : `Team ${team.number} is already on the board.`
+  );
+}
+
+function getLoadedTeamByNumber(teamNumber) {
+  return state.tba.teams.find((team) => team.number === teamNumber);
+}
+
 function addMarker() {
   const teamNumber = els.teamNumber.value.trim();
   if (!teamNumber) {
@@ -307,36 +481,106 @@ function addMarker() {
 
   const label = els.teamLabel.value.trim();
   const logoFile = els.teamLogo.files?.[0];
-  const marker = {
-    id: uid("marker"),
+  const loadedTeam = getLoadedTeamByNumber(teamNumber);
+  const baseConfig = {
     number: teamNumber,
-    label,
-    color: els.teamColor.value,
-    x: 0.5 + (Math.random() * 0.16 - 0.08),
-    y: 0.5 + (Math.random() * 0.16 - 0.08),
+    label: label || loadedTeam?.nickname || "",
+    color: loadedTeam?.color || els.teamColor.value,
     logoDataUrl: "",
   };
 
-  const commitMarker = () => {
-    state.markers.push(marker);
-    state.selectedMarkerId = marker.id;
-    renderMarkers(state.markers);
+  const commitMarker = (config) => {
+    const added = addMarkerFromConfig(config, { allowDuplicate: false });
+    if (!added) {
+      setTbaStatus(`Team ${config.number} is already on the board.`);
+      return;
+    }
+
     els.teamNumber.value = "";
     els.teamLabel.value = "";
     els.teamLogo.value = "";
   };
 
   if (!logoFile) {
-    commitMarker();
+    commitMarker(baseConfig);
     return;
   }
 
   const reader = new FileReader();
   reader.onload = () => {
-    marker.logoDataUrl = reader.result;
-    commitMarker();
+    commitMarker({
+      ...baseConfig,
+      logoDataUrl: reader.result,
+    });
   };
   reader.readAsDataURL(logoFile);
+}
+
+async function loadTbaTeams() {
+  const apiKey = els.tbaApiKey.value.trim();
+  const eventKey = els.tbaEventKey.value.trim().toLowerCase();
+
+  state.tba.apiKey = apiKey;
+  state.tba.eventKey = eventKey || "2026caasv";
+  els.tbaEventKey.value = state.tba.eventKey;
+  saveTbaSettings();
+
+  if (!apiKey) {
+    setTbaStatus("Add your TBA API key first so the app can fetch teams.", true);
+    return;
+  }
+
+  state.tba.isLoading = true;
+  renderTbaTeams();
+  setTbaStatus(`Loading teams for ${state.tba.eventKey}...`);
+
+  try {
+    const response = await fetch(
+      `https://www.thebluealliance.com/api/v3/event/${state.tba.eventKey}/teams/simple`,
+      {
+        headers: {
+          "X-TBA-Auth-Key": apiKey,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      let message = `TBA request failed (${response.status}).`;
+      if (response.status === 401 || response.status === 403) {
+        message = "TBA rejected that API key. Double-check the key from your TBA account.";
+      } else if (response.status === 404) {
+        message = `No TBA event was found for ${state.tba.eventKey}.`;
+      }
+      throw new Error(message);
+    }
+
+    const teams = await response.json();
+    state.tba.teams = teams
+      .map(normalizeLoadedTeam)
+      .sort((left, right) => Number(left.number) - Number(right.number));
+    filterLoadedTeams("");
+    renderTbaTeams();
+    setTbaStatus(`Loaded ${state.tba.teams.length} teams for ${state.tba.eventKey}.`);
+  } catch (error) {
+    state.tba.teams = [];
+    filterLoadedTeams("");
+    renderTbaTeams();
+    setTbaStatus(error.message || "Could not load teams from TBA.", true);
+  } finally {
+    state.tba.isLoading = false;
+    renderTbaTeams();
+  }
+}
+
+function clearStoredTbaKey() {
+  state.tba.apiKey = "";
+  state.tba.teams = [];
+  state.tba.filteredTeams = [];
+  els.tbaApiKey.value = "";
+  els.tbaTeamSearch.value = "";
+  localStorage.removeItem(TBA_STORAGE_KEY);
+  renderTbaTeams();
+  setTbaStatus("Cleared the saved TBA key from this browser.");
 }
 
 function clearDrawing() {
@@ -536,6 +780,21 @@ function easeInOut(value) {
 function bindEvents() {
   window.addEventListener("resize", resizeCanvas);
 
+  els.tbaApiKey.addEventListener("change", (event) => {
+    state.tba.apiKey = event.target.value.trim();
+    saveTbaSettings();
+  });
+  els.tbaEventKey.addEventListener("change", (event) => {
+    state.tba.eventKey = event.target.value.trim().toLowerCase() || "2026caasv";
+    event.target.value = state.tba.eventKey;
+    saveTbaSettings();
+  });
+  els.loadTbaTeams.addEventListener("click", loadTbaTeams);
+  els.clearTbaKey.addEventListener("click", clearStoredTbaKey);
+  els.tbaTeamSearch.addEventListener("input", (event) => {
+    filterLoadedTeams(event.target.value.trim().toLowerCase());
+    renderTbaTeams();
+  });
   els.addMarker.addEventListener("click", addMarker);
   els.removeMarker.addEventListener("click", removeSelectedMarker);
   els.clearDrawing.addEventListener("click", clearDrawing);
@@ -544,6 +803,17 @@ function bindEvents() {
   els.toolEraser.addEventListener("click", () => setTool("eraser"));
   els.strokeColor.addEventListener("input", (event) => {
     state.strokeColor = event.target.value;
+  });
+  els.teamNumber.addEventListener("input", (event) => {
+    const loadedTeam = getLoadedTeamByNumber(event.target.value.trim());
+    if (!loadedTeam) {
+      return;
+    }
+
+    els.teamColor.value = loadedTeam.color;
+    if (!els.teamLabel.value.trim()) {
+      els.teamLabel.value = loadedTeam.nickname;
+    }
   });
   els.strokeWidth.addEventListener("input", (event) => {
     state.strokeWidth = event.target.value;
@@ -576,9 +846,15 @@ function bindEvents() {
 }
 
 function init() {
+  readStoredTbaSettings();
+  filterLoadedTeams("");
+  renderTbaTeams();
   bindEvents();
   resizeCanvas();
   setStatus("Editing");
+  if (state.tba.apiKey) {
+    loadTbaTeams();
+  }
 }
 
 init();

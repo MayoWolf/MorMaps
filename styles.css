@@ -63,6 +63,12 @@ a {
   overflow: auto;
 }
 
+.app-credit {
+  margin-top: auto;
+  padding-top: 4px;
+  text-align: center;
+}
+
 .board-panel {
   padding: 22px;
   display: flex;
